@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SDR Pro">
+  <title>SDR Pro Secure</title>
+
+  <!-- SQLite WebAssembly Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+  <style>
+    :root {
+      --bg: #18191A;
+      --card-bg: #242526;
+      --text: #E4E6EB;
+      --accent: #3498DB;
+      --danger: #E74C3C;
+      --success: #27AE60;
+      --border: #3A3B3C;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); padding: 12px; font-size: 14px; min-height: 100vh; }
+    
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+    }
+    h2 { font-size: 18px; color: var(--accent); margin-bottom: 12px; text-align: center; }
+    label { font-size: 12px; font-weight: bold; margin-top: 8px; display: block; color: #B0B3B8; }
+    
+    input[type="text"], input[type="password"], textarea, select {
+      width: 100%;
+      background: #3A3B3C;
+      border: 1px solid #4E4F50;
+      color: #FFF;
+      padding: 11px;
+      border-radius: 8px;
+      margin-top: 4px;
+      font-size: 14px;
+      outline: none;
+    }
+    textarea { height: 55px; resize: none; }
+    
+    .upload-btn {
+      display: block;
+      text-align: center;
+      background: rgba(52, 152, 219, 0.15);
+      color: var(--accent);
+      border: 1.5px dashed var(--accent);
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    
+    .btn-row { display: flex; gap: 8px; margin-top: 14px; }
+    button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-search { background: var(--danger); color: white; }
+    .btn-login { background: var(--accent); color: white; margin-top: 15px; }
+    .btn-clear { background: #4E4F50; color: white; flex: 0.35; }
+    .btn-logout { background: #3A3B3C; color: #E74C3C; border: 1px solid #E74C3C; padding: 4px 10px; border-radius: 6px; font-size: 12px; float: right; cursor: pointer; }
+    button:disabled { opacity: 0.5; }
+
+    .status-badge {
+      font-size: 12px;
+      text-align: center;
+      margin-top: 8px;
+      padding: 4px;
+      border-radius: 4px;
+    }
+    
+    .result-card {
+      background: #1C1E21;
+      border-left: 4px solid var(--accent);
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .result-card .mob { font-size: 15px; font-weight: bold; color: #2ECC71; }
+    .result-card .alt-mob { font-size: 13px; color: #F39C12; font-weight: 600; }
+    .result-card .meta { font-size: 11px; color: #8A8D91; float: right; }
+
+    #loginScreen {
+      max-width: 360px;
+      margin: 80px auto 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. LOGIN SCREEN -->
+  <div id="loginScreen" class="card">
+    <h2>🔐 SDR Pro - सुरक्षा प्रमाणीकरण</h2>
+    <div style="font-size: 12px; color: #B0B3B8; text-align: center; margin-bottom: 15px;">
+      कृपया अधिकृत यूजर आईडी एवं पासवर्ड दर्ज करें
+    </div>
+
+    <label>User ID:</label>
+    <input type="text" id="loginUser" placeholder="Enter User ID" autocomplete="off">
+
+    <label>Password:</label>
+    <input type="password" id="loginPass" placeholder="Enter Password" autocomplete="off">
+
+    <div id="loginErr" style="color: var(--danger); font-size: 12px; text-align: center; margin-top: 10px; display: none;">
+      अमान्य User ID या Password!
+    </div>
+
+    <button class="btn-login" onclick="attemptLogin()">SECURE LOGIN</button>
+  </div>
+
+  <!-- 2. MAIN APPLICATION -->
+  <div id="appScreen" style="display: none;">
+    <div class="card">
+      <button class="btn-logout" onclick="logout()">लॉगआउट</button>
+      <h2>SDR PRO - मोबाइल सर्च</h2>
+      
+      <label>1. DB फोल्डर चुनें (आईफोन Files से):</label>
+      <label class="upload-btn" for="folderPicker">📁 SDR डेटाबेस फोल्डर सिलेक्ट करें</label>
+      <input type="file" id="folderPicker" webkitdirectory directory multiple accept=".db,.sqlite" style="display:none;">
+      <div id="dbStatus" class="status-badge" style="color:#F39C12;">इंजन शुरू हो रहा है...</div>
+
+      <label>Global Keyword (कहीं भी सर्च करें):</label>
+      <input type="text" id="gTerm" placeholder="नाम, मोबाइल, पता, ID आदि...">
+
+      <!-- Mobile Number Search -->
+      <label>Primary Mobile Number(s):</label>
+      <textarea id="mobList" placeholder="एक या एक से अधिक नंबर पेस्ट करें..."></textarea>
+
+      <!-- Alternate Number Search -->
+      <label>Alternate Number(s) (वैकल्पिक नंबर):</label>
+      <textarea id="altMobList" placeholder="अल्टरनेट नंबर पेस्ट करें (एक या अधिक)..."></textarea>
+
+      <div style="display:flex; gap:8px;">
+        <div style="flex:1;">
+          <label>Target Name:</label>
+          <input type="text" id="nameTerm" placeholder="नाम...">
+        </div>
+        <div style="width:130px;">
+          <label>Mode:</label>
+          <select id="searchMode">
+            <option value="Partial">Partial</option>
+            <option value="Exact">Exact</option>
+            <option value="Phonetic">Phonetic Sound</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Address Search Option -->
+      <label>Full Address / Location (पता या शहर):</label>
+      <input type="text" id="addressTerm" placeholder="गली, मोहल्ला, गांव, थाना, शहर...">
+
+      <div style="display:flex; gap:8px;">
+        <div style="flex:1;">
+          <label>Care of (F/H):</label>
+          <input type="text" id="fatherTerm" placeholder="पिता/पति का नाम...">
+        </div>
+        <div style="flex:1;">
+          <label>ID Proof No:</label>
+          <input type="text" id="idTerm" placeholder="पहचान संख्या...">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-clear" onclick="clearInputs()">Clear</button>
+        <button class="btn-search" id="searchBtn" disabled onclick="executeSearch()">START SEARCH</button>
+      </div>
+    </div>
+
+    <!-- Search Results Card -->
+    <div class="card" id="resultsBox" style="display:none;">
+      <h3 style="font-size:15px; color:#FFF; margin-bottom:6px;">सर्च परिणाम (<span id="resCount" style="color:var(--accent);">0</span>)</h3>
+      <div id="resultsList"></div>
+    </div>
+  </div>
+
+  <!-- 3. JAVASCRIPT LOGIC -->
+  <script>
+    const AUTH_USER = "PRBISHNOI";
+    const AUTH_PASS = "PR@2046";
+    const TABLE_NAME = "MobileData";
+
+    if (sessionStorage.getItem("sdr_authenticated") === "true") {
+      showDashboard();
+    }
+
+    function attemptLogin() {
+      const u = document.getElementById("loginUser").value.trim();
+      const p = document.getElementById("loginPass").value.trim();
+      const err = document.getElementById("loginErr");
+
+      if (u === AUTH_USER && p === AUTH_PASS) {
+        sessionStorage.setItem("sdr_authenticated", "true");
+        err.style.display = "none";
+        showDashboard();
+      } else {
+        err.style.display = "block";
+        document.getElementById("loginPass").value = "";
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById("loginScreen").style.display = "none";
+      document.getElementById("appScreen").style.display = "block";
+      initEngine();
+    }
+
+    function logout() {
+      sessionStorage.removeItem("sdr_authenticated");
+      location.reload();
+    }
+
+    function getSoundex(word) {
+      if (!word) return "";
+      word = word.toUpperCase();
+      let soundex = word[0];
+      const dict = { BFPV:"1", CGJKQSXZ:"2", DT:"3", L:"4", MN:"5", R:"6", AEIOUHWY:"." };
+      for (let i = 1; i < word.length; i++) {
+        let char = word[i];
+        for (let key in dict) {
+          if (key.includes(char)) {
+            let code = dict[key];
+            if (code !== "." && code !== soundex[soundex.length - 1]) soundex += code;
+          }
+        }
+      }
+      soundex = soundex.replace(/\./g, "");
+      return (soundex + "0000").substring(0, 4);
+    }
+
+    let SQL_ENGINE = null;
+    let activeDatabases = [];
+
+    function initEngine() {
+      if (SQL_ENGINE) return;
+      initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` })
+        .then(SQL => {
+          SQL_ENGINE = SQL;
+          document.getElementById('dbStatus').innerText = "इंजन तैयार है। कृपया DB फोल्डर लिंक करें।";
+          document.getElementById('dbStatus').style.color = "#3498DB";
+        });
+    }
+
+    document.getElementById('folderPicker').addEventListener('change', async function(e) {
+      const files = Array.from(e.target.files).filter(f => f.name.endsWith('.db') || f.name.endsWith('.sqlite'));
+      if (!files.length) {
+        alert("चयनित फोल्डर में कोई .db या .sqlite फाइल नहीं मिली।");
+        return;
+      }
+
+      activeDatabases = [];
+      const statusLbl = document.getElementById('dbStatus');
+
+      for (let i = 0; i < files.length; i++) {
+        statusLbl.innerText = `लोड हो रहा है (${i+1}/${files.length}): ${files[i].name}`;
+        const buffer = await files[i].arrayBuffer();
+        try {
+          const dbInstance = new SQL_ENGINE.Database(new Uint8Array(buffer));
+          activeDatabases.push({ filename: files[i].name, db: dbInstance });
+        } catch (err) {
+          console.error("DB Load Error:", files[i].name, err);
+        }
+      }
+
+      statusLbl.innerText = `✅ कुल ${activeDatabases.length} डेटाबेस लिंक हो चुके हैं`;
+      statusLbl.style.color = "#2ECC71";
+      document.getElementById('searchBtn').disabled = false;
+    });
+
+    function executeSearch() {
+      const gTerm = document.getElementById('gTerm').value.trim();
+      const mobRaw = document.getElementById('mobList').value.trim();
+      const altMobRaw = document.getElementById('altMobList').value.trim();
+      const name = document.getElementById('nameTerm').value.trim();
+      const mode = document.getElementById('searchMode').value;
+      const address = document.getElementById('addressTerm').value.trim();
+      const father = document.getElementById('fatherTerm').value.trim();
+      const idNum = document.getElementById('idTerm').value.trim();
+
+      if (!gTerm && !mobRaw && !altMobRaw && !name && !address && !father && !idNum) {
+        alert("कृपया कम से कम एक सर्च पैरामीटर भरें।");
+        return;
+      }
+
+      let baseWhere = [];
+      let baseParams = [];
+
+      if (gTerm) {
+        baseWhere.push("(Mobile LIKE ? OR Name LIKE ? OR CareofName LIKE ? OR Address LIKE ? OR AlternateMobile LIKE ? OR IDAddressProffValue LIKE ?)");
+        baseParams.push(`%${gTerm}%`, `%${gTerm}%`, `%${gTerm}%`, `%${gTerm}%`, `%${gTerm}%`, `%${gTerm}%`);
+      }
+
+      if (address) {
+        baseWhere.push("(Address LIKE ? OR City LIKE ?)");
+        baseParams.push(`%${address}%`, `%${address}%`);
+      }
+
+      if (father) {
+        baseWhere.push("CareofName LIKE ?");
+        baseParams.push(`%${father}%`);
+      }
+
+      if (idNum) {
+        baseWhere.push("(IDAddressProffValue = ? OR PhotoAddressProffValue = ?)");
+        baseParams.push(idNum, idNum);
+      }
+
+      const isPhonetic = mode === "Phonetic" && name;
+      if (name && !isPhonetic) {
+        if (mode === "Exact") {
+          baseWhere.push("Name = ?");
+          baseParams.push(name);
+        } else {
+          baseWhere.push("Name LIKE ?");
+          baseParams.push(`%${name}%`);
+        }
+      }
+
+      let mobList = mobRaw ? mobRaw.split(/[,\n\s]+/).map(m => m.trim()).filter(m => m) : [];
+      let altMobList = altMobRaw ? altMobRaw.split(/[,\n\s]+/).map(m => m.trim()).filter(m => m) : [];
+
+      let queryList = [];
+      const chunkSize = 800;
+
+      if (mobList.length > 0) {
+        for (let i = 0; i < mobList.length; i += chunkSize) {
+          const chunk = mobList.slice(i, i + chunkSize);
+          const placeholders = chunk.map(() => '?').join(',');
+          let where = [...baseWhere, `Mobile IN (${placeholders})`];
+          queryList.push({ sql: `SELECT * FROM ${TABLE_NAME} WHERE ` + where.join(" AND "), params: [...baseParams, ...chunk] });
+        }
+      } else if (altMobList.length > 0) {
+        for (let i = 0; i < altMobList.length; i += chunkSize) {
+          const chunk = altMobList.slice(i, i + chunkSize);
+          const placeholders = chunk.map(() => '?').join(',');
+          let where = [...baseWhere, `(AlternateMobile IN (${placeholders}) OR AltMobile IN (${placeholders}))`];
+          queryList.push({ sql: `SELECT * FROM ${TABLE_NAME} WHERE ` + where.join(" AND "), params: [...baseParams, ...chunk, ...chunk] });
+        }
+      } else {
+        let sql = `SELECT * FROM ${TABLE_NAME}`;
+        if (baseWhere.length) sql += ` WHERE ` + baseWhere.join(" AND ");
+        queryList.push({ sql: sql + " LIMIT 200", params: baseParams });
+      }
+
+      const targetSoundex = isPhonetic ? getSoundex(name) : "";
+      const resultsList = document.getElementById('resultsList');
+      resultsList.innerHTML = "";
+      let totalFound = 0;
+
+      activeDatabases.forEach(item => {
+        queryList.forEach(q => {
+          try {
+            const stmt = item.db.prepare(q.sql);
+            stmt.bind(q.params);
+
+            while (stmt.step()) {
+              const row = stmt.getAsObject();
+
+              if (isPhonetic && getSoundex(row.Name) !== targetSoundex) {
+                continue;
+              }
+
+              totalFound++;
+              const div = document.createElement('div');
+              div.className = 'result-card';
+              
+              const altNumber = row.AlternateMobile || row.AltMobile || '';
+              
+              div.innerHTML = `
+                <span class="meta">📁 ${item.filename}</span>
+                <div class="mob">📱 Primary: ${row.Mobile || '-'}</div>
+                ${altNumber ? `<div class="alt-mob">📞 Alternate: ${altNumber}</div>` : ''}
+                <div>👤 <b>Name:</b> ${row.Name || '-'}</div>
+                <div>👨‍👦 <b>C/o:</b> ${row.CareofName || '-'}</div>
+                <div>🏠 <b>Address:</b> ${row.Address || row.City || '-'}</div>
+                <div>🪪 <b>ID Proof:</b> ${row.IDAddressProffValue || row.PhotoAddressProffValue || '-'}</div>
+              `;
+              resultsList.appendChild(div);
+            }
+            stmt.free();
+          } catch (e) {
+            console.warn(`Query skipped in ${item.filename}:`, e.message);
+          }
+        });
+      });
+
+      document.getElementById('resCount').innerText = totalFound;
+      document.getElementById('resultsBox').style.display = 'block';
+
+      if (totalFound === 0) {
+        resultsList.innerHTML = "<div style='color:#8A8D91; padding:8px;'>कोई रिकॉर्ड नहीं मिला।</div>";
+      }
+    }
+
+    function clearInputs() {
+      document.getElementById('gTerm').value = "";
+      document.getElementById('mobList').value = "";
+      document.getElementById('altMobList').value = "";
+      document.getElementById('nameTerm').value = "";
+      document.getElementById('addressTerm').value = "";
+      document.getElementById('fatherTerm').value = "";
+      document.getElementById('idTerm').value = "";
+      document.getElementById('resultsBox').style.display = 'none';
+      document.getElementById('resultsList').innerHTML = "";
+    }
+  </script>
+</body>
+</html>
